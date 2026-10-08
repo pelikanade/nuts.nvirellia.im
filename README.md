@@ -23,7 +23,9 @@ VAULT_PATH="/path/to/nvirellia's nuts" bun run dev
 
 `dev` 用 nodemon 监视 `VAULT_PATH`（默认 `./vault`），忽略 `.obsidian/`。
 
-导航里的「关于我」来自库中 slug 为 `aboutme` 的笔记，链上真实库之后才会出现。
+导航里的「关于我」来自库中 `NutPages/关于我.md`（frontmatter `slug: aboutme`，侧栏隐藏），链上真实库之后才会出现。`NutPages/` 放站点专用页面，不是文章。
+
+发布范围由 `astro.config.mjs` 里的 `published` 决定。构建时只把这些文件夹复制到 `node_modules/.cache/nuts-vault` 再交给 starlight-obsidian，私有笔记不会进入构建。标题 wikilink（`[[笔记名|文字]]`）会改写成目标页面的真实地址（优先用 `slug`），笔记和文章之间互链也可以；指向未发布笔记的 wikilink 只保留文字，不生成链接。逻辑在 `src/lib/vault.mjs`。
 
 `starlight-obsidian` 要求该目录是一个 Obsidian 库：里面要有 `.obsidian/app.json`。没有链接就构建时会报：
 

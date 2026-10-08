@@ -1,5 +1,4 @@
 // @ts-check
-import fs from "node:fs";
 import path from "node:path";
 import starlight from "@astrojs/starlight";
 import starlightUtils from "@lorenzo_lewis/starlight-utils";
@@ -9,6 +8,7 @@ import starlightTranslator from "astro-llm-translator/starlight";
 import starlightGiscus from "starlight-giscus";
 import { createStarlightObsidianPlugin } from "starlight-obsidian";
 import starlightUiTweaks from "starlight-ui-tweaks";
+import { stageVault, vaultIgnore } from "./src/lib/vault.mjs";
 
 // Linked Obsidian vault. Do not commit it.
 //   ln -s "/path/to/nvirellia's nuts" vault
@@ -16,44 +16,26 @@ import starlightUiTweaks from "starlight-ui-tweaks";
 const vault = process.env.VAULT_PATH || "./vault";
 
 // Only these vault folders and notes are published. Anything else stays private.
+// NutPages/ holds dedicated site pages (e.g. 关于我.md with `slug: aboutme`).
 const published = {
-  notes: ["Design", "Digests", "Attachments", "关于我.md"],
+  notes: ["Design", "Digests", "Attachments", "NutPages"],
   posts: ["Posts", "Attachments"],
 };
+
+// starlight-obsidian reads a filtered copy of the vault: private notes never
+// reach it, and title wikilinks are rewritten to the target's real URL (honouring
+// `slug`), including links between the notes and posts instances. Links to
+// unpublished notes become plain text. See src/lib/vault.mjs.
+const stagedVault = stageVault({
+  vault,
+  stageDir: path.resolve("node_modules/.cache/nuts-vault"),
+  published,
+}).stageDir;
 
 const [starlightObsidianNotes, notesSidebarGroup] =
   createStarlightObsidianPlugin();
 const [starlightObsidianPosts, postsSidebarGroup] =
   createStarlightObsidianPlugin();
-
-// fast-glob patterns are relative to the vault root. A bare filename matches
-// only that root file (`*` does not cross `/`); `Name/**` matches the tree.
-// Metacharacters are escaped so a private note named e.g. `!draft.md` is ignored.
-function vaultIgnore(allowlist) {
-  if (!fs.existsSync(vault)) {
-    throw new Error(
-      `Obsidian vault not found at "${path.resolve(vault)}". Refusing to publish without an allowlist scan.`,
-    );
-  }
-
-  let entries;
-  try {
-    entries = fs.readdirSync(vault, { withFileTypes: true });
-  } catch (error) {
-    throw new Error(
-      `Cannot read Obsidian vault at "${path.resolve(vault)}". Refusing to publish without an allowlist scan.`,
-      { cause: error },
-    );
-  }
-
-  const allowed = new Set(allowlist);
-
-  return entries.flatMap((entry) => {
-    if (entry.name.startsWith(".") || allowed.has(entry.name)) return [];
-    const literal = entry.name.replace(/[\\*?[\]{}()!]/g, "\\$&");
-    return [entry.isDirectory() ? `${literal}/**` : literal];
-  });
-}
 
 // TODO(giscus): pelikanade/nuts.nvirellia.im has no discussion category yet.
 // Enable Discussions, create a category, then set all three from https://giscus.app
@@ -91,9 +73,9 @@ export default defineConfig({
         },
       ],
       plugins: [
-        // Notes: Design, Digests, root 关于我.md. Attachments are copied for embeds.
+        // Notes: Design, Digests, NutPages. Attachments are copied for embeds.
         starlightObsidianNotes({
-          vault,
+          vault: stagedVault,
           output: "notes",
           sidebar: {
             label: {
@@ -103,11 +85,11 @@ export default defineConfig({
             collapsedFolders: true,
           },
           copyFrontmatter: "starlight",
-          ignore: vaultIgnore(published.notes),
+          ignore: vaultIgnore(stagedVault, published.notes),
         }),
         // Posts: vault Posts/ only. Attachments are copied again under this output dir.
         starlightObsidianPosts({
-          vault,
+          vault: stagedVault,
           output: "posts",
           sidebar: {
             label: {
@@ -117,7 +99,7 @@ export default defineConfig({
             collapsedFolders: true,
           },
           copyFrontmatter: "starlight",
-          ignore: vaultIgnore(published.posts),
+          ignore: vaultIgnore(stagedVault, published.posts),
         }),
         starlightUiTweaks({
           navbarLinks: [

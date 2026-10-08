@@ -21,7 +21,7 @@ pnpm-debug.log*
 
 # Obsidian vault is linked from outside this repo (Obsidian Sync).
 # Never commit notes, attachments, or plugin state.
-vault/
+vault
 
 # Common Obsidian junk, in case a vault is placed somewhere else.
 **/.obsidian/workspace.json
