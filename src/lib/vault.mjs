@@ -9,6 +9,11 @@
 //   or the target's last path segment), so no private path or URL leaks.
 // - Embeds (`![[...]]`) and same-page anchors (`[[#Heading]]`) are left to
 //   starlight-obsidian.
+// - `sidebarHidden` globs are still copied and linked. Matching notes get
+//   `sidebar: { hidden: true }` injected into the copy so Starlight builds
+//   them, indexes them, and leaves them (and any folder with nothing left
+//   visible) out of the sidebar. A note that already sets `sidebar.hidden`
+//   is not rewritten; `copyFrontmatter: "starlight"` carries it through.
 import fs from "node:fs";
 import path from "node:path";
 import { slug as githubSlug } from "github-slugger";
@@ -62,9 +67,19 @@ function readVaultRoot(dir) {
  * @param {string} options.stageDir Output directory (wiped first).
  * @param {Record<string, string[]>} options.published starlight-obsidian
  *   output name -> allowlisted vault root entries.
+ * @param {Record<string, string[]>} [options.sidebarHidden] output name ->
+ *   vault-relative globs (`*`, `**`, `?`) of notes to publish without a
+ *   sidebar entry. Other frontmatter, including an existing `sidebar`, is
+ *   kept; only `sidebar.hidden` is set.
  * @param {string} [options.configFolder]
  */
-export function stageVault({ vault, stageDir, published, configFolder = ".obsidian" }) {
+export function stageVault({
+  vault,
+  stageDir,
+  published,
+  sidebarHidden = {},
+  configFolder = ".obsidian",
+}) {
   const root = path.resolve(vault);
   const entries = readVaultRoot(root);
   const allowed = new Set(Object.values(published).flat());
@@ -122,7 +137,13 @@ export function stageVault({ vault, stageDir, published, configFolder = ".obsidi
     if (source === undefined) {
       fs.copyFileSync(path.join(root, rel), dest);
     } else {
-      fs.writeFileSync(dest, rewriteWikilinks(source, rel, notes, assetNames));
+      let text = rewriteWikilinks(source, rel, notes, assetNames);
+      const output = outputFor(rel);
+      const patterns = output ? (sidebarHidden[output] ?? []) : [];
+      if (patterns.length > 0 && matchesVaultGlob(rel, patterns)) {
+        text = withSidebarHidden(text, rel);
+      }
+      fs.writeFileSync(dest, text);
     }
   }
 
@@ -152,16 +173,107 @@ function collect(root, rel, dirent, out) {
   }
 }
 
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[^\S\r\n]*(?:\r?\n|$)/;
+
 /** @param {string} source */
 function readFrontmatter(source) {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/.exec(source);
+  const match = FRONTMATTER.exec(source);
   if (!match) return {};
   try {
     const data = yaml.parse(match[1] ?? "");
-    return data && typeof data === "object" ? data : {};
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
   } catch {
     return {};
   }
+}
+
+/**
+ * `*` stays inside one path segment; `**` crosses segments, including none.
+ * @param {string} rel vault-relative POSIX path
+ * @param {string[]} patterns
+ */
+function matchesVaultGlob(rel, patterns) {
+  return patterns.some((pattern) => globToRegExp(pattern).test(rel));
+}
+
+/** @param {string} pattern */
+function globToRegExp(pattern) {
+  let re = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "*") {
+      if (pattern[i + 1] === "*") {
+        i++;
+        if (pattern[i + 1] === "/") {
+          i++;
+          re += "(?:[^/]+/)*";
+        } else {
+          re += ".*";
+        }
+      } else {
+        re += "[^/]*";
+      }
+    } else if (c === "?") {
+      re += "[^/]";
+    } else if (c === "\\") {
+      const next = pattern[i + 1];
+      if (next !== undefined) {
+        re += escapeRegExpChar(next);
+        i++;
+      }
+    } else {
+      re += escapeRegExpChar(c);
+    }
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/** @param {string} char */
+function escapeRegExpChar(char) {
+  return /[.+^${}()|[\]\\]/.test(char) ? `\\${char}` : char;
+}
+
+/**
+ * Set `sidebar.hidden` on a Markdown copy. Leaves the file untouched when it
+ * is already hidden, so an author-written frontmatter block is not reformatted.
+ * @param {string} source
+ * @param {string} rel
+ */
+function withSidebarHidden(source, rel) {
+  const match = FRONTMATTER.exec(source);
+  /** @type {Record<string, unknown>} */
+  let data = {};
+  if (match) {
+    let parsed;
+    try {
+      parsed = yaml.parse(match[1] ?? "");
+    } catch (error) {
+      throw new Error(`Cannot hide "${rel}" from the sidebar: its frontmatter is not valid YAML.`, {
+        cause: error,
+      });
+    }
+    if (parsed === null || parsed === undefined) {
+      data = {};
+    } else if (typeof parsed === "object" && !Array.isArray(parsed)) {
+      data = parsed;
+    } else {
+      throw new Error(`Cannot hide "${rel}" from the sidebar: its frontmatter is not a YAML map.`);
+    }
+    if (isPlainObject(data.sidebar) && data.sidebar.hidden === true) return source;
+  }
+
+  const sidebar = isPlainObject(data.sidebar) ? { ...data.sidebar } : {};
+  sidebar.hidden = true;
+  data.sidebar = sidebar;
+  const dumped = yaml.stringify(data, { lineWidth: 0 }).trimEnd();
+  const body = match ? source.slice(match[0].length) : source;
+  const gap = body === "" || body.startsWith("\n") || body.startsWith("\r") ? "" : "\n";
+  return `---\n${dumped}\n---\n${gap}${body}`;
+}
+
+/** @param {unknown} value */
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

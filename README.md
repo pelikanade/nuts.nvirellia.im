@@ -27,6 +27,8 @@ VAULT_PATH="/path/to/nvirellia's nuts" bun run dev
 
 发布范围由 `astro.config.mjs` 里的 `published` 决定。构建时只把这些文件夹复制到 `node_modules/.cache/nuts-vault` 再交给 starlight-obsidian，私有笔记不会进入构建。标题 wikilink（`[[笔记名|文字]]`）会改写成目标页面的真实地址（优先用 `slug`），笔记和文章之间互链也可以；指向未发布笔记的 wikilink 只保留文字，不生成链接。逻辑在 `src/lib/vault.mjs`。
 
+旁边的 `sidebarHidden` 是按实例写的库内 glob（例如笔记实例的 `Digests/_deep/**`）。匹配的笔记照常构建、可搜索、标题 wikilink 也会指向它们，地址不变，只是不出现在侧栏；一个文件夹里如果没有还显示的笔记，这个分组也会消失。单篇笔记在 frontmatter 里写 `sidebar: { hidden: true }` 同样生效，`NutPages/关于我.md` 就是这样。
+
 `starlight-obsidian` 要求该目录是一个 Obsidian 库：里面要有 `.obsidian/app.json`。没有链接就构建时会报：
 
 `The provided vault path is not a valid Obsidian vault directory and does not include an '.obsidian/app.json' file.`

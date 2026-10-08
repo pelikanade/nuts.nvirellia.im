@@ -22,14 +22,24 @@ const published = {
   posts: ["Posts", "Attachments"],
 };
 
+// Published, but omitted from the sidebar. Globs are vault-relative and scoped
+// to one starlight-obsidian instance (`*`, `**`, `?`). A single note can do the
+// same with frontmatter `sidebar: { hidden: true }`. Empty folders drop out.
+const sidebarHidden = {
+  notes: ["Digests/_deep/**"],
+};
+
 // starlight-obsidian reads a filtered copy of the vault: private notes never
 // reach it, and title wikilinks are rewritten to the target's real URL (honouring
 // `slug`), including links between the notes and posts instances. Links to
-// unpublished notes become plain text. See src/lib/vault.mjs.
+// unpublished notes become plain text. `sidebarHidden` matches are still in the
+// copy, with `sidebar.hidden` set so they stay linkable and searchable. See
+// src/lib/vault.mjs.
 const stagedVault = stageVault({
   vault,
   stageDir: path.resolve("node_modules/.cache/nuts-vault"),
   published,
+  sidebarHidden,
 }).stageDir;
 
 const [starlightObsidianNotes, notesSidebarGroup] =
