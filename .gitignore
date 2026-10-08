@@ -34,3 +34,8 @@ vault/
 src/content/docs/notes/
 src/content/docs/en/notes/
 src/assets/notes/
+src/content/docs/posts/
+src/content/docs/en/posts/
+src/assets/posts/
+public/notes/
+public/posts/

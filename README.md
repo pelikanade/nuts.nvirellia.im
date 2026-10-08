@@ -45,9 +45,10 @@ bun run build
 
 生成物已忽略，不要提交：
 
-- `src/content/docs/notes/`
-- `src/content/docs/en/notes/`
-- `src/assets/notes/`
+- `src/content/docs/notes/` 与 `src/content/docs/posts/`
+- `src/content/docs/en/notes/` 与 `src/content/docs/en/posts/`
+- `src/assets/notes/` 与 `src/assets/posts/`
+- `public/notes/` 与 `public/posts/`
 
 还没做的部署事项：
 
