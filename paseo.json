@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "site": {
+      "type": "service",
+      "command": "nix shell nixpkgs#nodejs_22 --command ./quartz/bootstrap-cli.mjs build --serve --port 8801 --wsPort 3001",
+      "port": 8801
+    }
+  }
+}
