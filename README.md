@@ -93,6 +93,25 @@ npm run build
 
 ## 部署
 
-构建机必须能看到库：构建之前把库挂载或符号链接到仓库根的 `vault`，或按上面 B 用 Sync 拉一份。不要把笔记提交进 git（`vault` 已在 `.gitignore` 里）。
+静态托管 **Cloudflare Pages**，构建 **GitHub Actions**（`.github/workflows/deploy.yml`）。
 
-`nuts.nvirellia.im` 的 DNS 尚未指向任何托管，仓库里也没有托管配置。
+内容不在 git 里，所以触发条件是 **定时（每 6 小时）+ 手动 + push 到 `main`**——只靠 push 永远等不到新笔记。
+
+流程：`npm ci` → `ob sync` 把只读的库拉到 `./vault`（`pull-only`，构建机绝不回写）→ 空库则拒绝构建 → `npm run build` → `wrangler pages deploy public`。
+
+需要在仓库里配好：
+
+| 名称                       | 类型     | 值                                                                    |
+| -------------------------- | -------- | --------------------------------------------------------------------- |
+| `OBSIDIAN_AUTH_TOKEN`      | secret   | 本机 `~/.config/obsidian-headless/auth_token` 的内容（32 位十六进制） |
+| `CLOUDFLARE_API_TOKEN`     | secret   | Cloudflare API token，权限 **Pages: Edit**                            |
+| `CLOUDFLARE_ACCOUNT_ID`    | secret   | Cloudflare 账户 ID                                                    |
+| `OBSIDIAN_VAULT`           | variable | 远端库 ID；不设则用 workflow 里的默认值                               |
+| `CLOUDFLARE_PAGES_PROJECT` | variable | Pages 项目名；不设则用 `nuts-nvirellia-im`                            |
+
+**还要手动做的两件**：
+
+1. 在 Cloudflare 建好 Pages 项目（Workers & Pages → Create → Pages → 名字与上面的项目名一致），否则首次 `wrangler pages deploy` 会因为项目不存在而失败；
+2. 把 `nuts.nvirellia.im` 的 DNS 指过来——在 Pages 项目里加自定义域名，按提示加 CNAME。
+
+`OBSIDIAN_AUTH_TOKEN` 的有效期没人验证过：上线后隔一天看它还能不能跑，不行就得换一份。

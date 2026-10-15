@@ -1,0 +1,67 @@
+name: Deploy
+
+# The content lives in Obsidian, not in this repository, so a push alone would
+# never pick up a new note: the schedule is the real trigger. Dispatch is there
+# for "rebuild now", push for changes to the site itself.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  VAULT: ${{ vars.OBSIDIAN_VAULT || '3fb704d89a1b6614020c7e5111d2990e' }}
+  PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'nuts-nvirellia-im' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # The vault is never committed. Pull a read-only copy with Obsidian's
+      # official headless client; OBSIDIAN_AUTH_TOKEN is preferred over the
+      # on-disk token file by the client itself.
+      #
+      # `pull-only` is not optional: the default is `bidirectional`, which lets
+      # a build machine write its own state back into the vault.
+      - name: Pull the vault
+        env:
+          OBSIDIAN_AUTH_TOKEN: ${{ secrets.OBSIDIAN_AUTH_TOKEN }}
+        run: |
+          npm install -g obsidian-headless@latest
+          ob sync-setup --vault "$VAULT" --path ./vault --device-name github-actions --json
+          ob sync-config --path ./vault --mode pull-only --configs "" --json
+          ob sync --path ./vault
+
+      # A sync that silently came back empty would publish a blank site.
+      - name: Refuse to build from an empty vault
+        run: |
+          count=$(find vault -name '*.md' -print -quit)
+          if [ -z "$count" ]; then
+            echo "vault/ has no Markdown — the sync did not deliver anything."
+            exit 1
+          fi
+
+      - run: npm run build
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy public --project-name=${{ env.PAGES_PROJECT }} --branch=main
