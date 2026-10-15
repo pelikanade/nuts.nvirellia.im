@@ -51,9 +51,10 @@ plugins:
     enabled: true
     options:
       defaultDateType: modified
+      # The vault arrives through Obsidian Sync, never a git checkout, so asking
+      # git for dates only logs a warning per file. Sync preserves mtimes.
       priority:
         - frontmatter
-        - git
         - filesystem
     order: 10
   - source: "@quartz-community/syntax-highlighting"
